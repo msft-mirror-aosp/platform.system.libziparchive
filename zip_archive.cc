@@ -387,23 +387,46 @@ static ZipError ParseZip64ExtendedInfoInExtraField(
       offset += dataSize;
       continue;
     }
+    // Layout for Zip64 extended info (not include first 4 bytes of header)
+    // Original
+    // Size       8 bytes    Original uncompressed file size
+
+    // Compressed
+    // Size       8 bytes    Size of compressed data
+
+    // Relative Header
+    // Offset     8 bytes    Offset of local header record
+
+    // Disk Start
+    // Number     4 bytes    Number of the disk on which
+    //                       this file starts
+    if (dataSize == 8 * 3 + 4) {
+      ALOGW(
+          "Zip: Found `Disk Start Number` field in extra block. Ignoring it.");
+      dataSize -= 4;
+    }
+    // Sometimes, only a subset of {uncompressed size, compressed size, relative
+    // header offset} is presents. but golang's zip writer will write out all
+    // 3 even if only 1 is necessary. We should parse all 3 fields if they are
+    // there.
+    const bool completeField = dataSize == 8 * 3;
 
     std::optional<uint64_t> uncompressedFileSize;
     std::optional<uint64_t> compressedFileSize;
     std::optional<uint64_t> localHeaderOffset;
-    if (zip32UncompressedSize == UINT32_MAX) {
-      uncompressedFileSize =
-          TryConsumeUnaligned<uint64_t>(&readPtr, extraFieldStart, extraFieldLength);
+    if (zip32UncompressedSize == UINT32_MAX || completeField) {
+      uncompressedFileSize = TryConsumeUnaligned<uint64_t>(
+          &readPtr, extraFieldStart, extraFieldLength);
       if (!uncompressedFileSize.has_value()) return kInvalidOffset;
     }
-    if (zip32CompressedSize == UINT32_MAX) {
-      compressedFileSize =
-          TryConsumeUnaligned<uint64_t>(&readPtr, extraFieldStart, extraFieldLength);
+    if (zip32CompressedSize == UINT32_MAX || completeField) {
+      compressedFileSize = TryConsumeUnaligned<uint64_t>(
+          &readPtr, extraFieldStart, extraFieldLength);
       if (!compressedFileSize.has_value()) return kInvalidOffset;
     }
-    if (zip32LocalFileHeaderOffset == UINT32_MAX) {
-      localHeaderOffset =
-          TryConsumeUnaligned<uint64_t>(&readPtr, extraFieldStart, extraFieldLength);
+    if (zip32LocalFileHeaderOffset == UINT32_MAX || completeField) {
+      localHeaderOffset = TryConsumeUnaligned<uint64_t>(
+          &readPtr, extraFieldStart, extraFieldLength);
       if (!localHeaderOffset.has_value()) return kInvalidOffset;
     }
 
@@ -645,7 +668,11 @@ static int32_t ValidateDataDescriptor(MappedZipFile& mapped_zip, const ZipEntry6
   uint8_t* ddReadPtr = (ddSignature == DataDescriptor::kOptSignature) ? ddBuf + 4 : ddBuf;
   DataDescriptor descriptor{};
   descriptor.crc32 = ConsumeUnaligned<uint32_t>(&ddReadPtr);
-  if (entry->zip64_format_size) {
+  // Don't use entry->zip64_format_size, because that is set to true even if
+  // both compressed/uncompressed size are < 0xFFFFFFFF.
+  constexpr auto u32max = std::numeric_limits<uint32_t>::max();
+  if (entry->compressed_length >= u32max ||
+      entry->uncompressed_length >= u32max) {
     descriptor.compressed_size = ConsumeUnaligned<uint64_t>(&ddReadPtr);
     descriptor.uncompressed_size = ConsumeUnaligned<uint64_t>(&ddReadPtr);
   } else {
