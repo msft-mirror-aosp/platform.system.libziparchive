@@ -387,23 +387,46 @@ static ZipError ParseZip64ExtendedInfoInExtraField(
       offset += dataSize;
       continue;
     }
+    // Layout for Zip64 extended info (not include first 4 bytes of header)
+    // Original
+    // Size       8 bytes    Original uncompressed file size
+
+    // Compressed
+    // Size       8 bytes    Size of compressed data
+
+    // Relative Header
+    // Offset     8 bytes    Offset of local header record
+
+    // Disk Start
+    // Number     4 bytes    Number of the disk on which
+    //                       this file starts
+    if (dataSize == 8 * 3 + 4) {
+      ALOGW(
+          "Zip: Found `Disk Start Number` field in extra block. Ignoring it.");
+      dataSize -= 4;
+    }
+    // Sometimes, only a subset of {uncompressed size, compressed size, relative
+    // header offset} is presents. but golang's zip writer will write out all
+    // 3 even if only 1 is necessary. We should parse all 3 fields if they are
+    // there.
+    const bool completeField = dataSize == 8 * 3;
 
     std::optional<uint64_t> uncompressedFileSize;
     std::optional<uint64_t> compressedFileSize;
     std::optional<uint64_t> localHeaderOffset;
-    if (zip32UncompressedSize == UINT32_MAX) {
-      uncompressedFileSize =
-          TryConsumeUnaligned<uint64_t>(&readPtr, extraFieldStart, extraFieldLength);
+    if (zip32UncompressedSize == UINT32_MAX || completeField) {
+      uncompressedFileSize = TryConsumeUnaligned<uint64_t>(
+          &readPtr, extraFieldStart, extraFieldLength);
       if (!uncompressedFileSize.has_value()) return kInvalidOffset;
     }
-    if (zip32CompressedSize == UINT32_MAX) {
-      compressedFileSize =
-          TryConsumeUnaligned<uint64_t>(&readPtr, extraFieldStart, extraFieldLength);
+    if (zip32CompressedSize == UINT32_MAX || completeField) {
+      compressedFileSize = TryConsumeUnaligned<uint64_t>(
+          &readPtr, extraFieldStart, extraFieldLength);
       if (!compressedFileSize.has_value()) return kInvalidOffset;
     }
-    if (zip32LocalFileHeaderOffset == UINT32_MAX) {
-      localHeaderOffset =
-          TryConsumeUnaligned<uint64_t>(&readPtr, extraFieldStart, extraFieldLength);
+    if (zip32LocalFileHeaderOffset == UINT32_MAX || completeField) {
+      localHeaderOffset = TryConsumeUnaligned<uint64_t>(
+          &readPtr, extraFieldStart, extraFieldLength);
       if (!localHeaderOffset.has_value()) return kInvalidOffset;
     }
 
@@ -645,7 +668,11 @@ static int32_t ValidateDataDescriptor(MappedZipFile& mapped_zip, const ZipEntry6
   uint8_t* ddReadPtr = (ddSignature == DataDescriptor::kOptSignature) ? ddBuf + 4 : ddBuf;
   DataDescriptor descriptor{};
   descriptor.crc32 = ConsumeUnaligned<uint32_t>(&ddReadPtr);
-  if (entry->zip64_format_size) {
+  // Don't use entry->zip64_format_size, because that is set to true even if
+  // both compressed/uncompressed size are < 0xFFFFFFFF.
+  constexpr auto u32max = std::numeric_limits<uint32_t>::max();
+  if (entry->compressed_length >= u32max ||
+      entry->uncompressed_length >= u32max) {
     descriptor.compressed_size = ConsumeUnaligned<uint64_t>(&ddReadPtr);
     descriptor.uncompressed_size = ConsumeUnaligned<uint64_t>(&ddReadPtr);
   } else {
@@ -677,7 +704,7 @@ static int32_t FindEntry(const ZipArchive* archive, std::string_view entryName,
   const uint8_t* ptr = base_ptr + nameOffset;
   ptr -= sizeof(CentralDirectoryRecord);
 
-  // This is the base of our mmapped region, we have to sanity check that
+  // This is the base of our mmapped region, we have to check that
   // the name that's in the hash table is a pointer to a location within
   // this mapped region.
   if (ptr < base_ptr || ptr > base_ptr + archive->central_directory.GetMapLength()) {
@@ -688,7 +715,7 @@ static int32_t FindEntry(const ZipArchive* archive, std::string_view entryName,
   auto cdr = reinterpret_cast<const CentralDirectoryRecord*>(ptr);
 
   // The offset of the start of the central directory in the zipfile.
-  // We keep this lying around so that we can sanity check all our lengths
+  // We keep this lying around so that we can check all our lengths
   // and our per-file structures.
   const off64_t cd_offset = archive->directory_offset;
 
@@ -1350,6 +1377,8 @@ static int32_t CopyEntryToWriter(MappedZipFile& mapped_zip, const ZipEntry64* en
   return 0;
 }
 
+namespace zip_archive {
+
 int32_t ExtractToWriter(ZipArchiveHandle handle, const ZipEntry64* entry,
                         zip_archive::Writer* writer) {
   const uint16_t method = entry->method;
@@ -1380,6 +1409,8 @@ int32_t ExtractToWriter(ZipArchiveHandle handle, const ZipEntry64* entry,
 
   return return_value;
 }
+
+}  // namespace zip_archive
 
 int32_t ExtractToMemory(ZipArchiveHandle archive, const ZipEntry* entry, uint8_t* begin,
                         size_t size) {
@@ -1570,7 +1601,7 @@ bool ZipArchive::InitializeCentralDirectory(off64_t cd_start_offset, size_t cd_s
   return true;
 }
 
-// This function returns the embedded timestamp as is; and doesn't perform validations.
+// This function returns the embedded timestamp as is and doesn't perform validation.
 tm ZipEntryCommon::GetModificationTime() const {
   tm t = {};
 
