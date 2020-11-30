@@ -89,7 +89,9 @@ cc_library {
     name: "libziparchive",
     host_supported: true,
     vendor_available: true,
+    product_available: true,
     recovery_available: true,
+    vendor_ramdisk_available: true,
     native_bridge_supported: true,
     vndk: {
         enabled: true,
@@ -114,8 +116,8 @@ cc_library {
 
     apex_available: [
         "//apex_available:platform",
+        "com.android.art",
         "com.android.art.debug",
-        "com.android.art.release",
     ],
 }
 
@@ -189,6 +191,7 @@ cc_binary {
     shared_libs: [
         "libbase",
         "libziparchive",
+        "libz",
     ],
     recovery_available: true,
     host_supported: true,
@@ -214,9 +217,9 @@ sh_test {
     test_suites: ["general-tests"],
     host_supported: true,
     device_supported: false,
-    test_config: "ziptool-tests.xml",
     data: ["cli-tests/**/*"],
     target_required: ["cli-test", "ziptool"],
+    data_device_bins: ["cli-test"],
 }
 
 python_test_host {
