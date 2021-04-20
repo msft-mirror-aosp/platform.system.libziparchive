@@ -124,6 +124,7 @@ cc_library {
         "com.android.art.debug",
         "com.android.virt",
     ],
+    min_sdk_version: "apex_inherit",
 }
 
 // Tests.
@@ -215,6 +216,14 @@ cc_fuzz {
     corpus: ["testdata/*"],
 }
 
+cc_fuzz {
+    name: "libziparchive_writer_fuzzer",
+    srcs: ["libziparchive_writer_fuzzer.cpp"],
+    static_libs: ["libziparchive", "libbase", "libz", "liblog"],
+    host_supported: true,
+    corpus: ["testdata/*"],
+}
+
 sh_test {
     name: "ziptool-tests",
     src: "run-ziptool-tests-on-android.sh",
@@ -242,4 +251,7 @@ python_test_host {
         },
     },
     test_suites: ["general-tests"],
+    test_options: {
+        unit_test: false,
+    },
 }
