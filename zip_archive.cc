@@ -325,9 +325,14 @@ static ZipError FindCentralDirectoryInfo(const char* debug_file_name,
   }
 
   // One of the field is 0xFFFFFFFF, look for the zip64 EOCD instead.
-  if (eocd->cd_size == UINT32_MAX || eocd->cd_start_offset == UINT32_MAX) {
-    ALOGV("Looking for the zip64 EOCD, cd_size: %" PRIu32 "cd_start_offset: %" PRId32,
-          eocd->cd_size, eocd->cd_start_offset);
+  if (eocd->num_records_on_disk == UINT16_MAX || eocd->num_records == UINT16_MAX ||
+      eocd->cd_size == UINT32_MAX || eocd->cd_start_offset == UINT32_MAX ||
+      eocd->comment_length == UINT16_MAX) {
+    ALOGV("Looking for the zip64 EOCD (cd_size: %" PRIu32 ", cd_start_offset: %" PRIu32
+          ", comment_length: %" PRIu16 ", num_records: %" PRIu16 ", num_records_on_disk: %" PRIu16
+          ")",
+          eocd->cd_size, eocd->cd_start_offset, eocd->comment_length, eocd->num_records,
+          eocd->num_records_on_disk);
     return FindCentralDirectoryInfoForZip64(debug_file_name, archive, eocd_offset, cdInfo);
   }
 
