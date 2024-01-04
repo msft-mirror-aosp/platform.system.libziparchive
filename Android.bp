@@ -156,6 +156,7 @@ cc_library {
         // Disable incfs hardending code for the default library
         "-DINCFS_SUPPORT_DISABLED=1",
     ],
+    apex_available: ["com.android.runtime"],
 }
 
 cc_library_static {
