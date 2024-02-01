@@ -1191,7 +1191,7 @@ class MemoryWriter final : public zip_archive::Writer {
                                             const ZipEntry64* entry) {
     const uint64_t declared_length = entry->uncompressed_length;
     if (declared_length > size) {
-      ALOGW("Zip: file size %" PRIu64 " is larger than the buffer size %zu.", declared_length,
+      ALOGE("Zip: file size %" PRIu64 " is larger than the buffer size %zu.", declared_length,
             size);
       return {};
     }
@@ -1205,7 +1205,7 @@ class MemoryWriter final : public zip_archive::Writer {
     }
 
     if (size_ < buf_size || bytes_written_ > size_ - buf_size) {
-      ALOGW("Zip: Unexpected size %zu (declared) vs %zu (actual)", size_,
+      ALOGE("Zip: Unexpected size %zu (declared) vs %zu (actual)", size_,
             bytes_written_ + buf_size);
       return false;
     }
@@ -1249,12 +1249,12 @@ class FileWriter final : public zip_archive::Writer {
     const uint64_t declared_length = entry->uncompressed_length;
     const off64_t current_offset = lseek64(fd, 0, SEEK_CUR);
     if (current_offset == -1) {
-      ALOGW("Zip: unable to seek to current location on fd %d: %s", fd, strerror(errno));
+      ALOGE("Zip: unable to seek to current location on fd %d: %s", fd, strerror(errno));
       return {};
     }
 
     if (declared_length > SIZE_MAX || declared_length > INT64_MAX) {
-      ALOGW("Zip: file size %" PRIu64 " is too large to extract.", declared_length);
+      ALOGE("Zip: file size %" PRIu64 " is too large to extract.", declared_length);
       return {};
     }
 
@@ -1271,7 +1271,7 @@ class FileWriter final : public zip_archive::Writer {
       // disk does not have enough space.
       long result = TEMP_FAILURE_RETRY(fallocate(fd, 0, current_offset, declared_length));
       if (result == -1 && errno == ENOSPC) {
-        ALOGW("Zip: unable to allocate %" PRIu64 " bytes at offset %" PRId64 ": %s",
+        ALOGE("Zip: unable to allocate %" PRIu64 " bytes at offset %" PRId64 ": %s",
               declared_length, static_cast<int64_t>(current_offset), strerror(errno));
         return {};
       }
@@ -1280,7 +1280,7 @@ class FileWriter final : public zip_archive::Writer {
 
     struct stat sb;
     if (fstat(fd, &sb) == -1) {
-      ALOGW("Zip: unable to fstat file: %s", strerror(errno));
+      ALOGE("Zip: unable to fstat file: %s", strerror(errno));
       return {};
     }
 
@@ -1288,7 +1288,7 @@ class FileWriter final : public zip_archive::Writer {
     if (!S_ISBLK(sb.st_mode)) {
       long result = TEMP_FAILURE_RETRY(ftruncate(fd, declared_length + current_offset));
       if (result == -1) {
-        ALOGW("Zip: unable to truncate file to %" PRId64 ": %s",
+        ALOGE("Zip: unable to truncate file to %" PRId64 ": %s",
               static_cast<int64_t>(declared_length + current_offset), strerror(errno));
         return {};
       }
@@ -1299,7 +1299,7 @@ class FileWriter final : public zip_archive::Writer {
 
   virtual bool Append(uint8_t* buf, size_t buf_size) override {
     if (declared_length_ < buf_size || total_bytes_written_ > declared_length_ - buf_size) {
-      ALOGW("Zip: Unexpected size %zu  (declared) vs %zu (actual)", declared_length_,
+      ALOGE("Zip: Unexpected size %zu  (declared) vs %zu (actual)", declared_length_,
             total_bytes_written_ + buf_size);
       return false;
     }
@@ -1308,7 +1308,7 @@ class FileWriter final : public zip_archive::Writer {
     if (result) {
       total_bytes_written_ += buf_size;
     } else {
-      ALOGW("Zip: unable to write %zu bytes to file; %s", buf_size, strerror(errno));
+      ALOGE("Zip: unable to write %zu bytes to file; %s", buf_size, strerror(errno));
     }
 
     return result;
