@@ -14,6 +14,7 @@
 // limitations under the License.
 
 package {
+    default_team: "trendy_team_native_tools_libraries",
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
@@ -161,7 +162,10 @@ cc_library {
 
 cc_library_static {
     name: "libziparchive_for_incfs",
-    defaults: ["libziparchive_lib_defaults", "incfs_support_defaults"],
+    defaults: [
+        "libziparchive_lib_defaults",
+        "incfs_support_defaults",
+    ],
     srcs: [
         "incfs_support/signal_handling.cpp",
     ],
@@ -243,7 +247,10 @@ cc_binary {
     host_supported: true,
     target: {
         android: {
-            symlinks: ["unzip", "zipinfo"],
+            symlinks: [
+                "unzip",
+                "zipinfo",
+            ],
         },
     },
 }
@@ -255,7 +262,7 @@ cc_fuzz {
         "libziparchive",
         "libbase",
         "libz",
-        "liblog"
+        "liblog",
     ],
     host_supported: true,
     corpus: ["testdata/*"],
@@ -268,7 +275,7 @@ cc_fuzz {
         "libziparchive_for_incfs",
         "libbase",
         "libz",
-        "liblog"
+        "liblog",
     ],
     host_supported: true,
     corpus: ["testdata/*"],
@@ -277,7 +284,12 @@ cc_fuzz {
 cc_fuzz {
     name: "libziparchive_writer_fuzzer",
     srcs: ["libziparchive_writer_fuzzer.cpp"],
-    static_libs: ["libziparchive", "libbase", "libz", "liblog"],
+    static_libs: [
+        "libziparchive",
+        "libbase",
+        "libz",
+        "liblog",
+    ],
     host_supported: true,
     corpus: ["testdata/*"],
 }
@@ -290,7 +302,10 @@ sh_test {
     host_supported: true,
     device_supported: false,
     data: ["cli-tests/**/*"],
-    target_required: ["cli-test", "ziptool"],
+    target_required: [
+        "cli-test",
+        "ziptool",
+    ],
     data_device_bins: ["cli-test"],
 }
 
