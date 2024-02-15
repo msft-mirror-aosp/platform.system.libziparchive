@@ -97,13 +97,17 @@ static constexpr uint64_t kMaxFileLength = 256 * static_cast<uint64_t>(1u << 30u
  * of the string length into the hash table entry.
  */
 
-constexpr auto kPageSize = 4096;
+#ifdef __linux__
+static const size_t kPageSize = getpagesize();
+#else
+constexpr size_t kPageSize = 4096;
+#endif
 
-[[maybe_unused]] static constexpr uintptr_t pageAlignDown(uintptr_t ptr_int) {
+[[maybe_unused]] static uintptr_t pageAlignDown(uintptr_t ptr_int) {
   return ptr_int & ~(kPageSize - 1);
 }
 
-[[maybe_unused]] static constexpr uintptr_t pageAlignUp(uintptr_t ptr_int) {
+[[maybe_unused]] static uintptr_t pageAlignUp(uintptr_t ptr_int) {
   return pageAlignDown(ptr_int + kPageSize - 1);
 }
 
@@ -321,9 +325,14 @@ static ZipError FindCentralDirectoryInfo(const char* debug_file_name,
   }
 
   // One of the field is 0xFFFFFFFF, look for the zip64 EOCD instead.
-  if (eocd->cd_size == UINT32_MAX || eocd->cd_start_offset == UINT32_MAX) {
-    ALOGV("Looking for the zip64 EOCD, cd_size: %" PRIu32 "cd_start_offset: %" PRId32,
-          eocd->cd_size, eocd->cd_start_offset);
+  if (eocd->num_records_on_disk == UINT16_MAX || eocd->num_records == UINT16_MAX ||
+      eocd->cd_size == UINT32_MAX || eocd->cd_start_offset == UINT32_MAX ||
+      eocd->comment_length == UINT16_MAX) {
+    ALOGV("Looking for the zip64 EOCD (cd_size: %" PRIu32 ", cd_start_offset: %" PRIu32
+          ", comment_length: %" PRIu16 ", num_records: %" PRIu16 ", num_records_on_disk: %" PRIu16
+          ")",
+          eocd->cd_size, eocd->cd_start_offset, eocd->comment_length, eocd->num_records,
+          eocd->num_records_on_disk);
     return FindCentralDirectoryInfoForZip64(debug_file_name, archive, eocd_offset, cdInfo);
   }
 
@@ -1182,7 +1191,7 @@ class MemoryWriter final : public zip_archive::Writer {
                                             const ZipEntry64* entry) {
     const uint64_t declared_length = entry->uncompressed_length;
     if (declared_length > size) {
-      ALOGW("Zip: file size %" PRIu64 " is larger than the buffer size %zu.", declared_length,
+      ALOGE("Zip: file size %" PRIu64 " is larger than the buffer size %zu.", declared_length,
             size);
       return {};
     }
@@ -1196,7 +1205,7 @@ class MemoryWriter final : public zip_archive::Writer {
     }
 
     if (size_ < buf_size || bytes_written_ > size_ - buf_size) {
-      ALOGW("Zip: Unexpected size %zu (declared) vs %zu (actual)", size_,
+      ALOGE("Zip: Unexpected size %zu (declared) vs %zu (actual)", size_,
             bytes_written_ + buf_size);
       return false;
     }
@@ -1240,12 +1249,12 @@ class FileWriter final : public zip_archive::Writer {
     const uint64_t declared_length = entry->uncompressed_length;
     const off64_t current_offset = lseek64(fd, 0, SEEK_CUR);
     if (current_offset == -1) {
-      ALOGW("Zip: unable to seek to current location on fd %d: %s", fd, strerror(errno));
+      ALOGE("Zip: unable to seek to current location on fd %d: %s", fd, strerror(errno));
       return {};
     }
 
     if (declared_length > SIZE_MAX || declared_length > INT64_MAX) {
-      ALOGW("Zip: file size %" PRIu64 " is too large to extract.", declared_length);
+      ALOGE("Zip: file size %" PRIu64 " is too large to extract.", declared_length);
       return {};
     }
 
@@ -1262,7 +1271,7 @@ class FileWriter final : public zip_archive::Writer {
       // disk does not have enough space.
       long result = TEMP_FAILURE_RETRY(fallocate(fd, 0, current_offset, declared_length));
       if (result == -1 && errno == ENOSPC) {
-        ALOGW("Zip: unable to allocate %" PRIu64 " bytes at offset %" PRId64 ": %s",
+        ALOGE("Zip: unable to allocate %" PRIu64 " bytes at offset %" PRId64 ": %s",
               declared_length, static_cast<int64_t>(current_offset), strerror(errno));
         return {};
       }
@@ -1271,7 +1280,7 @@ class FileWriter final : public zip_archive::Writer {
 
     struct stat sb;
     if (fstat(fd, &sb) == -1) {
-      ALOGW("Zip: unable to fstat file: %s", strerror(errno));
+      ALOGE("Zip: unable to fstat file: %s", strerror(errno));
       return {};
     }
 
@@ -1279,7 +1288,7 @@ class FileWriter final : public zip_archive::Writer {
     if (!S_ISBLK(sb.st_mode)) {
       long result = TEMP_FAILURE_RETRY(ftruncate(fd, declared_length + current_offset));
       if (result == -1) {
-        ALOGW("Zip: unable to truncate file to %" PRId64 ": %s",
+        ALOGE("Zip: unable to truncate file to %" PRId64 ": %s",
               static_cast<int64_t>(declared_length + current_offset), strerror(errno));
         return {};
       }
@@ -1290,7 +1299,7 @@ class FileWriter final : public zip_archive::Writer {
 
   virtual bool Append(uint8_t* buf, size_t buf_size) override {
     if (declared_length_ < buf_size || total_bytes_written_ > declared_length_ - buf_size) {
-      ALOGW("Zip: Unexpected size %zu  (declared) vs %zu (actual)", declared_length_,
+      ALOGE("Zip: Unexpected size %zu  (declared) vs %zu (actual)", declared_length_,
             total_bytes_written_ + buf_size);
       return false;
     }
@@ -1299,7 +1308,7 @@ class FileWriter final : public zip_archive::Writer {
     if (result) {
       total_bytes_written_ += buf_size;
     } else {
-      ALOGW("Zip: unable to write %zu bytes to file; %s", buf_size, strerror(errno));
+      ALOGE("Zip: unable to write %zu bytes to file; %s", buf_size, strerror(errno));
     }
 
     return result;
@@ -1370,7 +1379,7 @@ bool Reader::IsZeroCopy() const {
 }  // namespace zip_archive
 
 static std::span<uint8_t> bufferToSpan(zip_archive::Writer::Buffer buf) {
-  return {buf.first, ssize_t(buf.second)};
+  return std::span<uint8_t>(buf.first, buf.second);
 }
 
 template <bool OnIncfs>
@@ -1691,6 +1700,8 @@ int32_t ProcessZipEntryContents(ZipArchiveHandle archive, const ZipEntry64* entr
 
 MappedZipFile::MappedZipFile(int fd, off64_t length, off64_t offset)
     : fd_(fd), fd_offset_(offset), data_length_(length) {
+  // TODO(b/287285733): restore mmap() when the cold cache regression is fixed.
+#if 0
   // Only try to mmap all files in 64-bit+ processes as it's too easy to use up the whole
   // virtual address space on 32-bits, causing out of memory errors later.
   if constexpr (sizeof(void*) >= 8) {
@@ -1706,6 +1717,7 @@ MappedZipFile::MappedZipFile(int fd, off64_t length, off64_t offset)
       }
     }
   }
+#endif  // 0
 }
 
 int MappedZipFile::GetFileDescriptor() const {
