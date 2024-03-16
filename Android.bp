@@ -120,9 +120,6 @@ cc_defaults {
     recovery_available: true,
     vendor_ramdisk_available: true,
     native_bridge_supported: true,
-    vndk: {
-        enabled: true,
-    },
     double_loadable: true,
     export_shared_lib_headers: ["libbase"],
 
