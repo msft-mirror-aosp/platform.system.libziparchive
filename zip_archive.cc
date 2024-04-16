@@ -911,21 +911,25 @@ static int32_t FindEntry(const ZipArchive* archive, std::string_view entryName,
     return kInconsistentInformation;
   }
 
+  // Check the extra field length, regardless of whether it's used, or what it's used for.
+  const off64_t lfh_extra_field_offset = name_offset + lfh->file_name_length;
+  const uint16_t lfh_extra_field_size = lfh->extra_field_length;
+  if (lfh_extra_field_offset > cd_offset - lfh_extra_field_size) {
+    ALOGW("Zip: extra field has a bad size for entry %s", std::string(entryName).c_str());
+    return kInvalidOffset;
+  }
+
+  data->extra_field_size = lfh_extra_field_size;
+
+  // Check whether the extra field is being used for zip64.
   uint64_t lfh_uncompressed_size = lfh->uncompressed_size;
   uint64_t lfh_compressed_size = lfh->compressed_size;
   if (lfh_uncompressed_size == UINT32_MAX || lfh_compressed_size == UINT32_MAX) {
     if (lfh_uncompressed_size != UINT32_MAX || lfh_compressed_size != UINT32_MAX) {
       ALOGW(
-          "Zip: The zip64 extended field in the local header MUST include BOTH original and "
-          "compressed file size fields.");
+          "Zip: zip64 on Android requires both compressed and uncompressed length to be "
+          "UINT32_MAX");
       return kInvalidFile;
-    }
-
-    const off64_t lfh_extra_field_offset = name_offset + lfh->file_name_length;
-    const uint16_t lfh_extra_field_size = lfh->extra_field_length;
-    if (lfh_extra_field_offset > cd_offset - lfh_extra_field_size) {
-      ALOGW("Zip: extra field has a bad size for entry %s", std::string(entryName).c_str());
-      return kInvalidOffset;
     }
 
     auto lfh_extra_field_buf = static_buf;
