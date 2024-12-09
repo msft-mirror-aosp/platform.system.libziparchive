@@ -231,8 +231,8 @@ cc_benchmark {
     },
 }
 
-cc_defaults {
-    name: "ziptool_defaults",
+cc_binary {
+    name: "ziptool",
     defaults: ["libziparchive_flags"],
     srcs: ["ziptool.cpp"],
     shared_libs: [
@@ -240,6 +240,8 @@ cc_defaults {
         "libziparchive",
         "libz",
     ],
+    recovery_available: true,
+    host_supported: true,
     target: {
         android: {
             symlinks: [
@@ -248,19 +250,6 @@ cc_defaults {
             ],
         },
     },
-}
-
-cc_binary {
-    name: "ziptool",
-    defaults: ["ziptool_defaults"],
-    host_supported: true,
-}
-
-cc_binary {
-    name: "ziptool.recovery",
-    defaults: ["ziptool_defaults"],
-    recovery: true,
-    stem: "ziptool",
 }
 
 cc_fuzz {
