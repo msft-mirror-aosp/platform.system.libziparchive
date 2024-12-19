@@ -1429,3 +1429,15 @@ TEST(ziparchive, Bug174945959) {
   }
   EndIteration(cookie);
 }
+
+TEST(ziparchive, ExtractHugeFileOn32Bit) {
+  ZipArchiveHandle handle;
+  ASSERT_EQ(0, OpenArchiveWrapper("hugefile.zip", &handle));
+
+  ZipEntry64 entry;
+  ASSERT_EQ(0, FindEntry(handle, "hugefile", &entry));
+
+  TemporaryFile tmp;
+  ASSERT_NE(-1, tmp.fd);
+  ASSERT_EQ(0, ExtractEntryToFile(handle, &entry, tmp.fd));
+}
